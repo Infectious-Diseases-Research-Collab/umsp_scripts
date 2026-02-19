@@ -47,3 +47,8 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+
+final_umsp_dashboard_df.csv
+Monthly data for all sites through December 2025.dta
+*.dta

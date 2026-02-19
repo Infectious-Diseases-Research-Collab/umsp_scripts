@@ -1,0 +1,231 @@
+---
+title: "Data processing for the malaria surveillance dashbiard"
+author: "Shakira Babirye"
+date: "2025-09-01"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Libraries needed
+
+```{r}
+library(readstata13) # For Stata 13+ files
+library(tidyverse) # Loads dplyr, ggplot2, stringr, lubridate, etc.
+library(anytime) # For flexible date/time conversion
+```
+
+
+# Setwd
+
+```{r}
+#  Working directory
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+```
+
+
+
+# Load data
+
+
+```{r}
+UMSP_data <- read.dta13("Monthly data for all sites through December 2025.dta",
+  convert.factors = TRUE,
+  generate.factors = TRUE,
+  encoding = "UTF-8",
+  convert.underscore = FALSE,
+  missing.type = TRUE,
+  convert.dates = TRUE,
+  replace.strl = TRUE,
+  nonint.factors = TRUE
+)
+```
+
+
+# Retain variables we are to work with
+
+```{r}
+UMSP_data %>%
+  dplyr::select(
+    monthyear, quarter, site, NEWsiteID, Region, PRISM3, LLINarm, LLINEUP3arm, visits, visitsCA, malariasuspected,
+    malariasuspectedCA, propsuspected, TPR, TPRnum, TPRnumCA, MI1000
+  ) %>%
+  View()
+```
+
+
+# Some quaters are empty so regenerate quater and newly generate year
+
+```{r}
+UMSP_data %>%
+  dplyr::select(monthyear, quarter) %>%
+  head()
+
+UMSP_data %>%
+  dplyr::select(monthyear, quarter) %>%
+  tail()
+
+#-------------------------------------------------------------------------------------------------------------------------------
+
+UMSP_data <- UMSP_data %>%
+  mutate(
+    monthyear = as.Date(monthyear), # ensure it's in Date format
+    quarter = paste(year(monthyear), "Q", quarter(monthyear), sep = " "),
+    year = year(monthyear)
+  )
+
+# Check results
+UMSP_data %>%
+  dplyr::select(monthyear, quarter, year) %>%
+  View()
+```
+
+
+# View sites and regions
+
+```{r}
+UMSP_data %>%
+  dplyr::select(site, NEWsiteID, Region) %>%
+  View()
+
+#--------------------------------------------------------------------------------------------------------------------------------
+UMSP_data <- UMSP_data %>%
+  mutate(
+    # Extract district inside parentheses
+    district = str_extract(NEWsiteID, "\\((.*?)\\)"),
+    district = str_replace_all(district, "\\(|District\\)", "") %>% str_trim(), # clean text
+
+    # Extract health facility name (everything before the first "(")
+    Site = str_trim(str_extract(NEWsiteID, "^[^(]+"))
+  )
+
+
+UMSP_data %>%
+  dplyr::select(NEWsiteID, Site, district, Region) %>%
+  View()
+```
+
+
+# Malaria metrices
+
+```{r}
+UMSP_data %>%
+  dplyr::select(Site, district, Region, monthyear, quarter, year, MI1000) %>%
+  View()
+
+# Rename MI1000 to malaria incidence per 1000 PY
+
+UMSP_data <- UMSP_data %>%
+  rename(malaria_incidence_per_1000_PY = MI1000)
+
+# Check the result
+UMSP_data %>%
+  dplyr::select(Site, district, Region, monthyear, quarter, year, malaria_incidence_per_1000_PY) %>%
+  View()
+```
+
+
+
+# visit related variables
+
+```{r}
+UMSP_data %>%
+  dplyr::select(visits, visitsCA) %>%
+  View()
+
+# Generate proportion of visits that came from the catchment area
+
+UMSP_data <- UMSP_data %>%
+  mutate(prop_visit_CA = visitsCA / visits)
+
+
+UMSP_data %>%
+  dplyr::select(visits, visitsCA, prop_visit_CA) %>%
+  View()
+```
+
+
+# TPR related variables
+
+```{r}
+UMSP_data %>%
+  dplyr::select(TPR, TPRnum, TPRnumCA, TPRdenom, TPRdenomCA, TPRCA) %>%
+  View()
+
+# Rename
+
+UMSP_data <- UMSP_data %>%
+  rename(
+    TPR_cases_all = TPRnum,
+    TPR_cases_per_CA = TPRnumCA
+  )
+```
+
+
+# Health seeking and diagonistics
+
+```{r}
+UMSP_data %>%
+  dplyr::select(
+    visits, visitsCA, malariasuspected,
+    propsuspected
+  ) %>%
+  View()
+
+UMSP_data <- UMSP_data %>%
+  rename(propsuspected_per_total_visits = propsuspected)
+```
+
+
+
+
+Quality control variables
+
+```{r}
+UMSP_data %>%
+  dplyr::select(
+    visits, visitsCA, prop_visit_CA,
+    proptested
+  ) %>%
+  View()
+```
+
+
+
+
+# Get final dataset
+
+```{r}
+final_UMSP_dashboard_df <- UMSP_data %>%
+  dplyr::select(
+    # Geographical level variables
+    Site, Region, district,
+
+    # Time scale variables
+    monthyear, quarter, year,
+
+    # Malaria metrices
+    malaria_incidence_per_1000_PY, TPR_cases_all, TPR_cases_per_CA,
+
+    # Health seeking and diagonistic
+    visits, malariasuspected, propsuspected_per_total_visits,
+
+    # Quality control variables
+    proptested, prop_visit_CA
+  ) %>%
+  # This line converts all column names to lowercase
+  rename_with(tolower)
+
+# Save new dataset as csv file
+write.csv(final_UMSP_dashboard_df,
+  "final_UMSP_dashboard_df.csv",
+  row.names = FALSE
+)
+```
+
+
