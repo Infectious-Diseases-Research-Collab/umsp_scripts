@@ -5,21 +5,23 @@ suppressPackageStartupMessages({
   library(anytime)
 })
 
-# Smart Working Directory -------------------------------------------------
-if (interactive() && requireNamespace("rstudioapi", quietly = TRUE)) {
-  setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-} else {
-  args <- commandArgs(trailingOnly = FALSE)
-  file_arg <- "--file="
-  script_path <- sub(file_arg, "", args[grep(file_arg, args)])
-  if (length(script_path) > 0) {
-    setwd(dirname(normalizePath(script_path)))
-  }
-}
+# User Configuration ------------------------------------------------------
+# Update this value to match the latest UMSP .dta file from Box.
+INPUT_DTA_FILE <- "Monthly data for all sites through December 2025.dta"
 
 # Load Data ---------------------------------------------------------------
+if (!file.exists(INPUT_DTA_FILE)) {
+  stop(
+    paste0(
+      "Input file not found: ", INPUT_DTA_FILE, "\n",
+      "Update INPUT_DTA_FILE at the top of prepare_csv.R to the latest .dta filename ",
+      "from the UMSP Box folder, and ensure the file is in this directory."
+    )
+  )
+}
+
 umsp_data <- read.dta13(
-  "Monthly data for all sites through December 2025.dta",
+  INPUT_DTA_FILE,
   convert.factors = TRUE,
   generate.factors = TRUE,
   encoding = "UTF-8",
